@@ -29,7 +29,7 @@
 	<parent>
 		<groupId>org.jmxtrans</groupId>
 		<artifactId>jmxtrans-packaging</artifactId>
-		<version>266-SNAPSHOT</version>
+		<version>270-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>jmxtrans-systemd</artifactId>
@@ -113,8 +113,8 @@
 								</data>
 								<data>
 									<type>file</type>
-									<src>${project.basedir}/src/etc/log4j.xml</src>
-									<dst>/etc/jmxtrans/log4j.xml</dst>
+									<src>${project.basedir}/src/etc/logback.xml</src>
+									<dst>/etc/jmxtrans/logback.xml</dst>
 									<conffile>true</conffile>
 								</data>
 								<data>

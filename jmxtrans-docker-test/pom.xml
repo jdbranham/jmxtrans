@@ -29,10 +29,19 @@
 	<parent>
 		<groupId>org.jmxtrans</groupId>
 		<artifactId>jmxtrans-parent</artifactId>
-		<version>266-SNAPSHOT</version>
+		<version>270-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>jmxtrans-docker-test</artifactId>
+
+	<packaging>pom</packaging>
+
+	<name>JmxTrans - Docker tests</name>
+
+	<description>This module contains integration of Deb and RPM packages.
+		It uses Docker to check that these packages install properly on various Linux distributions.
+		It is not included in the final packaging.
+	</description>
 
 	<properties>
 		<deb.install.artifact>org.jmxtrans:jmxtrans:deb</deb.install.artifact>

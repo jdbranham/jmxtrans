@@ -31,10 +31,8 @@ import com.googlecode.jmxtrans.guice.JmxTransModule;
 import com.googlecode.jmxtrans.model.JmxProcess;
 import com.googlecode.jmxtrans.model.Result;
 import com.googlecode.jmxtrans.model.ResultAttribute;
-
-import com.googlecode.jmxtrans.util.JsonUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.WordUtils;
+import com.googlecode.jmxtrans.model.ResultAttributes;
+import com.googlecode.jmxtrans.util.ProcessConfigUtils;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDB.ConsistencyLevel;
 import org.influxdb.dto.BatchPoints;
@@ -45,23 +43,27 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.verification.VerificationMode;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
-import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
-import static com.google.common.collect.Sets.immutableEnumSet;
 import static com.googlecode.jmxtrans.model.QueryFixtures.dummyQuery;
+import static com.googlecode.jmxtrans.model.ServerFixtures.DEFAULT_PORT;
 import static com.googlecode.jmxtrans.model.ServerFixtures.dummyServer;
+import static com.googlecode.jmxtrans.model.output.InfluxDbWriter.JMX_PORT_KEY;
 import static com.googlecode.jmxtrans.model.output.InfluxDbWriter.TAG_HOSTNAME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -76,6 +78,7 @@ public class InfluxDbWriterTests {
 	private static final String DATABASE_NAME = "database";
 	private static final String HOST = "host.example.net";
 	private static final ImmutableMap<String, String> DEFAULT_CUSTOM_TAGS = ImmutableMap.of();
+	private static final ImmutableList<String> DEFAULT_TYPE_NAMES = ImmutableList.of();
 
 	@Mock
 	private InfluxDB influxDB;
@@ -84,32 +87,29 @@ public class InfluxDbWriterTests {
 
 	private static final ConsistencyLevel DEFAULT_CONSISTENCY_LEVEL = ConsistencyLevel.ALL;
 	private static final String DEFAULT_RETENTION_POLICY = "default";
-	private static final ImmutableSet<ResultAttribute> DEFAULT_RESULT_ATTRIBUTES = immutableEnumSet(EnumSet.allOf(ResultAttribute.class));
+	private static final ImmutableSet<ResultAttribute> DEFAULT_RESULT_ATTRIBUTES = ImmutableSet.copyOf(ResultAttributes.values());
 
-	Result result = new Result(2l, "attributeName", "className", "objDomain", "keyAlias", "typeName",
-			ImmutableMap.of("key", (Object) 1));
+	Result result = new Result(2l, "attributeName", "className", "objDomain", "keyAlias", "type=test,name=name",
+			ImmutableList.of("key"), 1);
 	ImmutableList<Result> results = ImmutableList.of(result);
 
 	@Test
 	public void pointsAreWrittenToInfluxDb() throws Exception {
-		InfluxDbWriter writer = getTestInfluxDbWriterWithDefaultSettings();
-		writer.doWrite(dummyServer(), dummyQuery(), results);
+		BatchPoints batchPoints = writeToInfluxDb(getTestInfluxDbWriterWithDefaultSettings());
 
-		verify(influxDB).write(messageCaptor.capture());
-		BatchPoints batchPoints = messageCaptor.getValue();
-
+		// The database name is present
 		assertThat(batchPoints.getDatabase()).isEqualTo(DATABASE_NAME);
 
 		// Point only exposes its state via a line protocol so we have to
 		// make assertions against this.
 		// Format is:
 		// measurement,<comma separated key=val tags>" " <comma separated
-		// key=val fields>
+		// key=val fields>" "time
 		Map<String, String> expectedTags = new TreeMap<String, String>();
-		expectedTags.put(enumValueToAttribute(ResultAttribute.ATTRIBUTE_NAME), result.getAttributeName());
-		expectedTags.put(enumValueToAttribute(ResultAttribute.CLASS_NAME), result.getClassName());
-		expectedTags.put(enumValueToAttribute(ResultAttribute.OBJ_DOMAIN), result.getObjDomain());
-		expectedTags.put(enumValueToAttribute(ResultAttribute.TYPE_NAME), result.getTypeName());
+		expectedTags.put(ResultAttributes.ATTRIBUTE_NAME.getName() , result.getAttributeName());
+		expectedTags.put(ResultAttributes.CLASS_NAME.getName(), result.getClassName());
+		expectedTags.put(ResultAttributes.OBJ_DOMAIN.getName
+					(), result.getObjDomain());
 		expectedTags.put(TAG_HOSTNAME, HOST);
 		String lineProtocol = buildLineProtocol(result.getKeyAlias(), expectedTags);
 
@@ -121,89 +121,102 @@ public class InfluxDbWriterTests {
 	}
 
 	@Test
-	public void emptyCustomTagsDoesntBotherWrite() throws Exception {
-		InfluxDbWriter writer = getTestInfluxDbWriterWithDefaultSettings();
-		writer.doWrite(dummyServer(), dummyQuery(), results);
-		verify(influxDB).write(messageCaptor.capture());
-		BatchPoints batchPoints = messageCaptor.getValue();
-
-		assertThat(batchPoints.getDatabase()).isEqualTo(DATABASE_NAME);
-		List<Point> points = batchPoints.getPoints();
-		assertThat(points).hasSize(1);
+	public void customTagsAreWrittenToDb() throws Exception {
+		ImmutableMap<String, String> tags = ImmutableMap.of("customTag", "customValue");
+		BatchPoints batchPoints = writeToInfluxDb(getTestInfluxDbWriterWithCustomTags(tags));
+		assertThat(batchPoints.getPoints().get(0).lineProtocol()).contains("customTag=customValue");
 	}
 
 	@Test
-	public void customTagsAreWrittenToDb() throws Exception {
-		ImmutableMap<String, String> tags = ImmutableMap.of("customTag", "customValue");
-		InfluxDbWriter writer = getTestInfluxDbWriterWithCustomTags(tags);
-		writer.doWrite(dummyServer(), dummyQuery(), results);
-
-		verify(influxDB).write(messageCaptor.capture());
-		BatchPoints batchPoints = messageCaptor.getValue();
-
-		assertThat(batchPoints.getDatabase()).isEqualTo(DATABASE_NAME);
-		List<Point> points = batchPoints.getPoints();
-		assertThat(points).hasSize(1);
-
-		Point point = points.get(0);
-		assertThat(point.lineProtocol()).contains("customTag=customValue");
+	public void attributeNameIncludesTypeNames() throws Exception {
+		ImmutableList<String> typeNames = ImmutableList.of("name");
+		BatchPoints batchPoints = writeToInfluxDb(getTestInfluxDbWriterWithTypeNames(typeNames));
+		assertThat(batchPoints.getPoints().get(0).lineProtocol()).contains("name.attributeName_key");
 	}
 
 	@Test
 	public void writeConsistencyLevelsAreAppliedToBatchPointsBeingWritten() throws Exception {
 		for (ConsistencyLevel consistencyLevel : ConsistencyLevel.values()) {
-			InfluxDbWriter writer = getTestInfluxDbWriterWithWriteConsistency(consistencyLevel);
-
-			writer.doWrite(dummyServer(), dummyQuery(), results);
-
-			verify(influxDB, atLeastOnce()).write(messageCaptor.capture());
-			BatchPoints batchPoints = messageCaptor.getValue();
+			BatchPoints batchPoints = writeAtLeastOnceToInfluxDb(
+					getTestInfluxDbWriterWithWriteConsistency(consistencyLevel));
 			assertThat(batchPoints.getConsistency()).isEqualTo(consistencyLevel);
 		}
 	}
 
 	@Test
 	public void onlyRequestedResultPropertiesAreAppliedAsTags() throws Exception {
-		for (ResultAttribute expectedResultTag : ResultAttribute.values()) {
+		for (ResultAttribute expectedResultTag : ResultAttributes.values()) {
 			ImmutableSet<ResultAttribute> expectedResultTags = ImmutableSet.of(expectedResultTag);
-			InfluxDbWriter writer = getTestInfluxDbWriterWithResultTags(expectedResultTags);
-			writer.doWrite(dummyServer(), dummyQuery(), results);
-
-			verify(influxDB, atLeastOnce()).write(messageCaptor.capture());
-			BatchPoints batchPoints = messageCaptor.getValue();
+			BatchPoints batchPoints = writeAtLeastOnceToInfluxDb(getTestInfluxDbWriterWithResultTags(expectedResultTags));
 			String lineProtocol = batchPoints.getPoints().get(0).lineProtocol();
 
-			assertThat(lineProtocol).contains(enumValueToAttribute(expectedResultTag));
-			EnumSet<ResultAttribute> unexpectedResultTags = EnumSet.complementOf(EnumSet.of(expectedResultTag));
+			assertThat(lineProtocol).contains(expectedResultTag.getName()+"=");
+			Set<ResultAttribute> unexpectedResultTags = new HashSet<ResultAttribute>(ResultAttributes.values());
+			unexpectedResultTags.remove(expectedResultTag);
 			for (ResultAttribute unexpectedResultTag : unexpectedResultTags) {
-				assertThat(lineProtocol).doesNotContain(enumValueToAttribute(unexpectedResultTag));
+				assertThat(lineProtocol).doesNotContain(unexpectedResultTag.getName()+"=");
 			}
 		}
 	}
 
 	@Test
 	public void databaseIsCreated() throws Exception {
-		InfluxDbWriter writer = getTestInfluxDbWriterWithDefaultSettings();
-		writer.doWrite(dummyServer(), dummyQuery(), results);
-
+		writeToInfluxDb(getTestInfluxDbWriterWithDefaultSettings());
 		verify(influxDB).createDatabase(DATABASE_NAME);
 	}
 
 	@Test
 	public void databaseIsNotCreated() throws Exception {
-		InfluxDbWriter writer = getTestInfluxDbWriterNoDatabaseCreation();
-		writer.doWrite(dummyServer(), dummyQuery(), results);
-
+		writeToInfluxDb(getTestInfluxDbWriterNoDatabaseCreation());
 		verify(influxDB, never()).createDatabase(anyString());
+	}
+
+	@Test
+	public void jmxPortIsReportedAsFieldByDefault() throws Exception {
+		BatchPoints batchPoints = writeToInfluxDb(getTestInfluxDbWriterWithDefaultSettings());
+		verifyJMXPortOnlyInToken(batchPoints.getPoints().get(0).lineProtocol(), 1 /*Fields token*/);
+	}
+
+	@Test
+	public void jmxPortIsReportedAsTag() throws Exception {
+		BatchPoints batchPoints = writeToInfluxDb(getTestInfluxDbWriterWithReportJmxPortAsTag());
+		verifyJMXPortOnlyInToken(batchPoints.getPoints().get(0).lineProtocol(), 0 /*Tags token*/);
+	}
+
+	private void verifyJMXPortOnlyInToken(String lineProtocol, int tokenContainingJMXPort) {
+		// lineProtocol is from Point.lineProtocol() :
+		// The format is
+		//  measurement,<comma separated key=val tags>" " <comma separated key=val fields>" "time
+		// So splitted by space we have three tokens : the tags are in the first one ([0])
+		// and the fields are in the second one ([1])
+		// so we check between  the 0 and 1 indexes (tag and fields)
+		String[] protocolTokens = lineProtocol.split(" ");
+		assertThat(protocolTokens).hasSize(3);
+		assertThat(protocolTokens[tokenContainingJMXPort]).contains(JMX_PORT_KEY + "=" + DEFAULT_PORT);
+		assertThat(protocolTokens[1 - tokenContainingJMXPort]).doesNotContain(JMX_PORT_KEY);
 	}
 
 	@Test
 	public void loadingFromFile() throws URISyntaxException, IOException {
 		File input = new File(InfluxDbWriterTests.class.getResource("/influxDB.json").toURI());
 		Injector injector = JmxTransModule.createInjector(new JmxTransConfiguration());
-		JsonUtils jsonUtils = injector.getInstance(JsonUtils.class);
-		JmxProcess process = jsonUtils.parseProcess(input);
+		ProcessConfigUtils processConfigUtils = injector.getInstance(ProcessConfigUtils.class);
+		JmxProcess process = processConfigUtils.parseProcess(input);
 		assertThat(process.getName()).isEqualTo("influxDB.json");
+	}
+
+	private BatchPoints writeToInfluxDb(InfluxDbWriter writer) throws Exception {
+		return writeToInfluxDb(writer, times(1));
+	}
+
+	private BatchPoints writeAtLeastOnceToInfluxDb(InfluxDbWriter writer) throws Exception {
+		return writeToInfluxDb(writer, atLeastOnce());
+	}
+
+	private BatchPoints writeToInfluxDb(InfluxDbWriter writer, VerificationMode mode) throws Exception {
+		writer.doWrite(dummyServer(), dummyQuery(), results);
+		verify(influxDB, mode).write(messageCaptor.capture());
+		return messageCaptor.getValue();
 	}
 
 	private String buildLineProtocol(String measurement, Map<String, String> expectedTags) {
@@ -221,33 +234,35 @@ public class InfluxDbWriterTests {
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriterWithDefaultSettings() {
-		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, true);
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, DEFAULT_TYPE_NAMES, true, false);
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriterWithResultTags(ImmutableSet<ResultAttribute> resultTags) {
-		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, resultTags, true);
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, resultTags, DEFAULT_TYPE_NAMES, true, false);
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriterWithCustomTags(ImmutableMap<String, String> tags) {
-		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, tags, DEFAULT_RESULT_ATTRIBUTES, true);
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, tags, DEFAULT_RESULT_ATTRIBUTES, DEFAULT_TYPE_NAMES, true, false);
+	}
 
+	private InfluxDbWriter getTestInfluxDbWriterWithTypeNames(ImmutableList<String> typeNames) {
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, typeNames, true, false);
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriterWithWriteConsistency(ConsistencyLevel consistencyLevel) {
-		return getTestInfluxDbWriter(consistencyLevel, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, true);
+		return getTestInfluxDbWriter(consistencyLevel, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, DEFAULT_TYPE_NAMES, true, false);
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriterNoDatabaseCreation() {
-		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, false);
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, DEFAULT_TYPE_NAMES, false, false);
+	}
+
+	private InfluxDbWriter getTestInfluxDbWriterWithReportJmxPortAsTag() {
+		return getTestInfluxDbWriter(DEFAULT_CONSISTENCY_LEVEL, DEFAULT_RETENTION_POLICY, DEFAULT_CUSTOM_TAGS, DEFAULT_RESULT_ATTRIBUTES, DEFAULT_TYPE_NAMES, true, true);
 	}
 
 	private InfluxDbWriter getTestInfluxDbWriter(ConsistencyLevel consistencyLevel, String retentionPolicy, ImmutableMap<String, String> tags,
-												 ImmutableSet<ResultAttribute> resultTags, boolean createDatabase) {
-		return new InfluxDbWriter(influxDB, DATABASE_NAME, consistencyLevel, retentionPolicy, tags, resultTags, createDatabase);
-	}
-
-	private String enumValueToAttribute(ResultAttribute attribute) {
-		String[] split = attribute.name().split("_");
-		return StringUtils.lowerCase(split[0]) + WordUtils.capitalizeFully(split[1]);
+												 ImmutableSet<ResultAttribute> resultTags, ImmutableList<String> typeNames, boolean createDatabase, boolean reportJmxPortAsTag) {
+		return new InfluxDbWriter(influxDB, DATABASE_NAME, consistencyLevel, retentionPolicy, tags, resultTags, typeNames, createDatabase, reportJmxPortAsTag);
 	}
 }

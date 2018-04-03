@@ -34,7 +34,7 @@
 
 	<groupId>org.jmxtrans</groupId>
 	<artifactId>jmxtrans-parent</artifactId>
-	<version>266-SNAPSHOT</version>
+	<version>270-SNAPSHOT</version>
 	<packaging>pom</packaging>
 	<name>JmxTrans - parent project</name>
 	<description>JMX metrics exporter</description>
@@ -130,8 +130,8 @@
 		</site>
 	</distributionManagement>
 	<properties>
-		<animal-sniffer.version>1.15</animal-sniffer.version>
-		<aws.java.sdk.version>1.11.6</aws.java.sdk.version>
+		<animal-sniffer.version>1.16</animal-sniffer.version>
+		<aws.java.sdk.version>1.11.228</aws.java.sdk.version>
 		<!--
 			Maximum number of checkstyle violations allowed. Build will fail
 			if there are more than this number of violations. Feel free to
@@ -140,10 +140,10 @@
 		-->
 		<checkstyle.max.allowed.violations>0</checkstyle.max.allowed.violations>
 		<github.global.server>github</github.global.server>
-		<!-- some versions used by multiple dependencies -->
-		<jackson.version>2.7.4</jackson.version>
+		<jackson.version>2.8.9</jackson.version>
 		<jsw.dir>${project.build.directory}/generated-resources/appassembler/jsw/${package.daemon.name}</jsw.dir>
-		<logback.version>1.1.7</logback.version>
+		<kafka.version>0.11.0.1</kafka.version>
+		<logback.version>1.2.3</logback.version>
 		<main.class>com.googlecode.jmxtrans.JmxTransformer</main.class>
 		<maven.build.timestamp.format>yyMMdd_HHmm</maven.build.timestamp.format>
 		<package.daemon.name>${project.artifactId}</package.daemon.name>
@@ -151,10 +151,10 @@
 		<package.install.dir>/usr/share/${project.artifactId}</package.install.dir>
 		<package.user>${project.artifactId}</package.user>
 		<packageBuildTimeStamp>${maven.build.timestamp}</packageBuildTimeStamp>
-		<powermock.version>1.6.5</powermock.version>
+		<powermock.version>1.7.1</powermock.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-		<slf4j.version>1.7.21</slf4j.version>
+		<slf4j.version>1.7.25</slf4j.version>
 		<verify.mutationThreshold>100</verify.mutationThreshold>
 		<verify.totalBranchRate>100</verify.totalBranchRate>
 		<verify.totalLineRate>100</verify.totalLineRate>
@@ -191,7 +191,7 @@
 			<dependency>
 				<groupId>com.beust</groupId>
 				<artifactId>jcommander</artifactId>
-				<version>1.48</version>
+				<version>1.72</version>
 			</dependency>
 			<dependency>
 				<groupId>com.fasterxml.jackson.core</groupId>
@@ -206,6 +206,11 @@
 			<dependency>
 				<groupId>com.fasterxml.jackson.core</groupId>
 				<artifactId>jackson-databind</artifactId>
+				<version>${jackson.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.dataformat</groupId>
+				<artifactId>jackson-dataformat-yaml</artifactId>
 				<version>${jackson.version}</version>
 			</dependency>
 			<dependency>
@@ -231,27 +236,28 @@
 			<dependency>
 				<groupId>com.google.guava</groupId>
 				<artifactId>guava</artifactId>
+				<!-- guava 20.0 is the last Java 7 compatible version -->
 				<version>19.0</version>
 			</dependency>
 			<dependency>
 				<groupId>com.google.inject</groupId>
 				<artifactId>guice</artifactId>
-				<version>4.0</version>
+				<version>4.1.0</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-cli</groupId>
 				<artifactId>commons-cli</artifactId>
-				<version>1.3.1</version>
+				<version>1.4</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-codec</groupId>
 				<artifactId>commons-codec</artifactId>
-				<version>1.10</version>
+				<version>1.11</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-io</groupId>
 				<artifactId>commons-io</artifactId>
-				<version>2.5</version>
+				<version>2.6</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-lang</groupId>
@@ -271,22 +277,12 @@
 			<dependency>
 				<groupId>io.searchbox</groupId>
 				<artifactId>jest</artifactId>
-				<version>2.0.2</version>
+				<version>5.3.3</version>
 			</dependency>
 			<dependency>
 				<groupId>javax.inject</groupId>
 				<artifactId>javax.inject</artifactId>
 				<version>1</version>
-			</dependency>
-			<dependency>
-				<groupId>log4j</groupId>
-				<artifactId>apache-log4j-extras</artifactId>
-				<version>1.2.17</version>
-			</dependency>
-			<dependency>
-				<groupId>log4j</groupId>
-				<artifactId>log4j</artifactId>
-				<version>1.2.17</version>
 			</dependency>
 			<dependency>
 				<groupId>net.sf.jpathwatch</groupId>
@@ -300,13 +296,39 @@
 			</dependency>
 			<dependency>
 				<groupId>org.apache.kafka</groupId>
-				<artifactId>kafka_2.10</artifactId>
-				<version>0.10.0.0</version>
+				<artifactId>kafka-clients</artifactId>
+				<version>${kafka.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.kafka</groupId>
+				<artifactId>kafka_2.11</artifactId>
+				<version>${kafka.version}</version>
+				<exclusions>
+					<exclusion>
+						<groupId>org.slf4j</groupId>
+						<artifactId>slf4j-log4j12</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.velocity</groupId>
 				<artifactId>velocity</artifactId>
 				<version>1.7</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.zookeeper</groupId>
+				<artifactId>zookeeper</artifactId>
+				<version>3.4.10</version>
+				<exclusions>
+					<exclusion>
+						<groupId>log4j</groupId>
+						<artifactId>log4j</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>org.slf4j</groupId>
+						<artifactId>slf4j-log4j12</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>org.codehaus.mojo</groupId>
@@ -315,9 +337,14 @@
 				<optional>true</optional>
 			</dependency>
 			<dependency>
+				<groupId>org.graylog2</groupId>
+				<artifactId>gelfclient</artifactId>
+				<version>1.4.2.1</version>
+			</dependency>
+			<dependency>
 				<groupId>org.influxdb</groupId>
 				<artifactId>influxdb-java</artifactId>
-				<version>2.4</version>
+				<version>2.7</version>
 			</dependency>
 			<dependency>
 				<groupId>org.jhades</groupId>
@@ -372,6 +399,11 @@
 			</dependency>
 			<dependency>
 				<groupId>org.jmxtrans</groupId>
+				<artifactId>jmxtrans-output-gelf</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.jmxtrans</groupId>
 				<artifactId>jmxtrans-output-influxdb</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -387,7 +419,7 @@
 			</dependency>
 			<dependency>
 				<groupId>org.jmxtrans</groupId>
-				<artifactId>jmxtrans-output-log4j</artifactId>
+				<artifactId>jmxtrans-output-logback</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -410,7 +442,7 @@
 				<artifactId>quartz</artifactId>
 				<version>1.8.6</version>
 			</dependency>
-			<dependency>
+			<dependency><!-- quartz and jmxtrans-output-log4j depend on log4j -->
 				<groupId>org.slf4j</groupId>
 				<artifactId>log4j-over-slf4j</artifactId>
 				<version>${slf4j.version}</version>
@@ -421,46 +453,17 @@
 				<version>${slf4j.version}</version>
 			</dependency>
 			<dependency>
-				<groupId>org.slf4j</groupId>
-				<artifactId>slf4j-log4j12</artifactId>
-				<version>${slf4j.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>org.slf4j</groupId>
-				<artifactId>slf4j-simple</artifactId>
-				<version>${slf4j.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>com.google.code.findbugs</groupId>
-				<artifactId>annotations</artifactId>
-				<version>3.0.1u2</version>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-annotations</artifactId>
+				<version>3.1.2</version>
 				<scope>provided</scope>
-				<exclusions>
-					<exclusion>
-						<groupId>com.google.code.findbugs</groupId>
-						<artifactId>jsr305</artifactId>
-					</exclusion>
-					<exclusion>
-						<groupId>net.jcip</groupId>
-						<artifactId>jcip-annotations</artifactId>
-					</exclusion>
-				</exclusions>
+				<optional>true</optional>
 			</dependency>
 			<dependency>
 				<groupId>org.projectlombok</groupId>
 				<artifactId>lombok</artifactId>
-				<version>1.16.8</version>
+				<version>1.16.18</version>
 				<scope>provided</scope>
-			</dependency>
-			<dependency>
-				<!--
-					There is no compile time dependency on acplt. There might be a runtime dependency that I did not
-					identify yet, so let's keep it for the moment. After further analysis, we might be able to remove it.
-				-->
-				<groupId>org.acplt</groupId>
-				<artifactId>oncrpc</artifactId>
-				<version>1.0.7</version>
-				<scope>runtime</scope>
 			</dependency>
 			<dependency>
 				<!--
@@ -468,43 +471,13 @@
 				-->
 				<groupId>org.apache.httpcomponents</groupId>
 				<artifactId>httpclient</artifactId>
-				<version>4.5.2</version>
-				<scope>runtime</scope>
-			</dependency>
-			<dependency>
-				<!--
-					There is no compile time dependency on jgit. There might be a runtime dependency that I did not
-					identify yet, so let's keep it for the moment. After further analysis, we might be able to remove it.
-				-->
-				<groupId>org.eclipse.jgit</groupId>
-				<artifactId>org.eclipse.jgit</artifactId>
-				<version>4.0.2.201509141540-r</version>
-				<scope>runtime</scope>
-			</dependency>
-			<dependency>
-				<!--
-					There is no compile time dependency on jboss remoting. There might be a runtime dependency that I did not
-					identify yet, so let's keep it for the moment. After further analysis, we might be able to remove it.
-				-->
-				<groupId>org.jboss.remoting3</groupId>
-				<artifactId>remoting-jmx</artifactId>
-				<version>1.0.1.Final</version>
-				<scope>runtime</scope>
-			</dependency>
-			<dependency>
-				<!--
-					There is no compile time dependency on jboss remoting. There might be a runtime dependency that I did not
-					identify yet, so let's keep it for the moment. After further analysis, we might be able to remove it.
-				-->
-				<groupId>org.jboss.remotingjmx</groupId>
-				<artifactId>remoting-jmx</artifactId>
-				<version>2.0.1.Final</version>
+				<version>4.5.3</version>
 				<scope>runtime</scope>
 			</dependency>
 			<dependency>
 				<groupId>com.github.tomakehurst</groupId>
 				<artifactId>wiremock</artifactId>
-				<version>2.0.10-beta</version>
+				<version>2.8.0</version>
 				<scope>test</scope>
 			</dependency>
 			<dependency>
@@ -522,14 +495,14 @@
 			<dependency>
 				<groupId>net.javacrumbs.json-unit</groupId>
 				<artifactId>json-unit-fluent</artifactId>
-				<version>1.12.1</version>
+				<version>1.25.0</version>
 				<scope>test</scope>
 			</dependency>
 			<dependency>
 				<groupId>org.assertj</groupId>
 				<artifactId>assertj-core</artifactId>
 				<!-- AssertJ > 3 does not support Java 7 anymore, let's stay with 2.X.X for the moment -->
-				<version>2.4.1</version>
+				<version>2.8.0</version>
 				<scope>test</scope>
 			</dependency>
 			<dependency>
@@ -567,12 +540,13 @@
 			<dependency>
 				<groupId>org.mockito</groupId>
 				<artifactId>mockito-core</artifactId>
-				<version>2.0.2-beta</version>
+				<!-- until we get rid of PowerMock, mockito version needs to be compatible with PowerMock -->
+				<version>2.8.9</version>
 				<scope>test</scope>
 			</dependency>
 			<dependency>
 				<groupId>org.powermock</groupId>
-				<artifactId>powermock-api-mockito</artifactId>
+				<artifactId>powermock-api-mockito2</artifactId>
 				<version>${powermock.version}</version>
 				<scope>test</scope>
 			</dependency>
@@ -599,8 +573,13 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>org.slf4j</groupId>
-			<artifactId>slf4j-log4j12</artifactId>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-classic</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>ch.qos.logback</groupId>
+			<artifactId>logback-core</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
@@ -635,9 +614,25 @@
 					</executions>
 				</plugin>
 				<plugin>
+					<groupId>com.github.spotbugs</groupId>
+					<artifactId>spotbugs-maven-plugin</artifactId>
+					<version>3.1.3</version>
+					<configuration>
+						<effort>Max</effort>
+						<threshold>Default</threshold>
+					</configuration>
+					<executions>
+						<execution>
+							<goals>
+								<goal>check</goal>
+							</goals>
+						</execution>
+					</executions>
+				</plugin>
+				<plugin>
 					<groupId>com.mycila</groupId>
 					<artifactId>license-maven-plugin</artifactId>
-					<version>3.0.rc1</version>
+					<version>3.0</version>
 					<configuration>
 						<header>com/mycila/maven/plugin/license/templates/MIT.txt</header>
 						<strictCheck>true</strictCheck>
@@ -653,6 +648,8 @@
 							<exclude>**/pitest-history.xml</exclude>
 							<exclude>*.bak</exclude>
 							<exclude>.puml</exclude>
+							<exclude>mvnw.cmd</exclude>
+							<exclude>**/maven-wrapper.properties</exclude>
 						</excludes>
 					</configuration>
 					<executions>
@@ -689,12 +686,12 @@
 				<plugin>
 					<groupId>io.fabric8</groupId>
 					<artifactId>docker-maven-plugin</artifactId>
-					<version>0.15.5</version>
+					<version>0.22.1</version>
 				</plugin>
 				<plugin>
 					<groupId>net.ju-n.maven.plugins</groupId>
 					<artifactId>checksum-maven-plugin</artifactId>
-					<version>1.3</version>
+					<version>1.4</version>
 					<configuration>
 						<algorithms>
 							<algorithm>MD5</algorithm>
@@ -718,7 +715,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-assembly-plugin</artifactId>
-					<version>2.6</version>
+					<version>3.1.0</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
@@ -760,7 +757,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-compiler-plugin</artifactId>
-					<version>3.5.1</version>
+					<version>3.7.0</version>
 					<configuration>
 						<source>1.7</source>
 						<target>1.7</target>
@@ -769,7 +766,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-dependency-plugin</artifactId>
-					<version>2.10</version>
+					<version>3.0.1</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
@@ -784,7 +781,7 @@
 						<dependency>
 							<groupId>de.andrena.tools.nopackagecycles</groupId>
 							<artifactId>no-package-cycles-enforcer-rule</artifactId>
-							<version>1.0.5</version>
+							<version>1.0.8</version>
 						</dependency>
 					</dependencies>
 					<executions>
@@ -805,7 +802,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-failsafe-plugin</artifactId>
-					<version>2.19.1</version>
+					<version>2.20</version>
 					<configuration>
 						<groups>com.googlecode.jmxtrans.test.IntegrationTest</groups>
 					</configuration>
@@ -841,12 +838,12 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-jar-plugin</artifactId>
-					<version>2.6</version>
+					<version>3.0.2</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-javadoc-plugin</artifactId>
-					<version>2.10.3</version>
+					<version>2.10.4</version>
 					<executions>
 						<execution>
 							<id>attach-javadocs</id>
@@ -869,7 +866,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-resources-plugin</artifactId>
-					<version>3.0.0</version>
+					<version>3.0.2</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
@@ -892,12 +889,12 @@
 						<dependency>
 							<groupId>org.apache.maven.scm</groupId>
 							<artifactId>maven-scm-api</artifactId>
-							<version>1.9.4</version>
+							<version>1.9.5</version>
 						</dependency>
 						<dependency>
 							<groupId>org.apache.maven.scm</groupId>
 							<artifactId>maven-scm-provider-jgit</artifactId>
-							<version>1.9.4</version>
+							<version>1.9.5</version>
 							<!-- required in order to hide password value in command logging on travis -->
 						</dependency>
 					</dependencies>
@@ -914,12 +911,12 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-shade-plugin</artifactId>
-					<version>2.4.3</version>
+					<version>3.1.0</version>
 				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-site-plugin</artifactId>
-					<version>3.5.1</version>
+					<version>3.6</version>
 					<configuration>
 						<skipDeploy>true</skipDeploy>
 					</configuration>
@@ -936,7 +933,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-source-plugin</artifactId>
-					<version>3.0.0</version>
+					<version>3.0.1</version>
 					<executions>
 						<execution>
 							<id>attach-sources</id>
@@ -949,7 +946,7 @@
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-surefire-plugin</artifactId>
-					<version>2.19.1</version>
+					<version>2.20</version>
 					<configuration>
 						<includes>
 							<include>**/Test*.java</include>
@@ -958,6 +955,25 @@
 							<include>**/*Tests.java</include>
 						</includes>
 					</configuration>
+				</plugin>
+				<plugin>
+					<groupId>org.basepom.maven</groupId>
+					<artifactId>duplicate-finder-maven-plugin</artifactId>
+					<version>1.3.0</version>
+					<configuration>
+						<failBuildInCaseOfDifferentContentConflict>true</failBuildInCaseOfDifferentContentConflict>
+						<failBuildInCaseOfEqualContentConflict>false</failBuildInCaseOfEqualContentConflict>
+						<failBuildInCaseOfConflict>false</failBuildInCaseOfConflict>
+					</configuration>
+					<executions>
+						<execution>
+							<id>duplicate-classes-check</id>
+							<goals>
+								<goal>check</goal>
+							</goals>
+							<phase>verify</phase>
+						</execution>
+					</executions>
 				</plugin>
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>
@@ -983,7 +999,7 @@
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>
 					<artifactId>appassembler-maven-plugin</artifactId>
-					<version>1.10</version>
+					<version>2.0.0</version>
 				</plugin>
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>
@@ -1019,29 +1035,13 @@
 				</plugin>
 				<plugin>
 					<groupId>org.codehaus.mojo</groupId>
-					<artifactId>findbugs-maven-plugin</artifactId>
-					<version>3.0.3</version>
-					<configuration>
-						<effort>Max</effort>
-						<threshold>Default</threshold>
-					</configuration>
-					<executions>
-						<execution>
-							<goals>
-								<goal>check</goal>
-							</goals>
-						</execution>
-					</executions>
-				</plugin>
-				<plugin>
-					<groupId>org.codehaus.mojo</groupId>
 					<artifactId>rpm-maven-plugin</artifactId>
 					<version>2.1.5</version>
 				</plugin>
 				<plugin>
 					<groupId>org.pitest</groupId>
 					<artifactId>pitest-maven</artifactId>
-					<version>1.1.10</version>
+					<version>1.2.2</version>
 					<configuration>
 						<mutators>
 							<mutator>DEFAULTS</mutator>
@@ -1069,7 +1069,7 @@
 				<plugin>
 					<groupId>org.sonatype.plugins</groupId>
 					<artifactId>nexus-staging-maven-plugin</artifactId>
-					<version>1.6.7</version>
+					<version>1.6.8</version>
 					<extensions>true</extensions>
 					<configuration>
 						<serverId>ossrh</serverId>
@@ -1089,6 +1089,10 @@
 			<plugin>
 				<groupId>com.github.ekryd.sortpom</groupId>
 				<artifactId>sortpom-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
 				<groupId>com.mycila</groupId>
@@ -1123,16 +1127,16 @@
 				<artifactId>maven-surefire-plugin</artifactId>
 			</plugin>
 			<plugin>
+				<groupId>org.basepom.maven</groupId>
+				<artifactId>duplicate-finder-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>animal-sniffer-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>cobertura-maven-plugin</artifactId>
-			</plugin>
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>findbugs-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
 				<groupId>org.sonatype.plugins</groupId>
@@ -1143,6 +1147,15 @@
 
 	<reporting>
 		<plugins>
+			<plugin>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-maven-plugin</artifactId>
+				<version>3.1.3</version>
+				<configuration>
+					<effort>Max</effort>
+					<threshold>Exp</threshold>
+				</configuration>
+			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
@@ -1174,10 +1187,10 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-pmd-plugin</artifactId>
-				<version>3.6</version>
+				<version>3.8</version>
 				<configuration>
 					<sourceEncoding>${project.build.sourceEncoding}</sourceEncoding>
-					<targetJdk>1.6</targetJdk>
+					<targetJdk>1.7</targetJdk>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -1200,7 +1213,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-report-plugin</artifactId>
-				<version>2.19.1</version>
+				<version>2.20</version>
 			</plugin>
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
@@ -1214,15 +1227,6 @@
 						</reports>
 					</reportSet>
 				</reportSets>
-			</plugin>
-			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>findbugs-maven-plugin</artifactId>
-				<version>3.0.3</version>
-				<configuration>
-					<effort>Max</effort>
-					<threshold>Exp</threshold>
-				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
@@ -1264,7 +1268,7 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>versions-maven-plugin</artifactId>
-				<version>2.2</version>
+				<version>2.4</version>
 			</plugin>
 		</plugins>
 	</reporting>

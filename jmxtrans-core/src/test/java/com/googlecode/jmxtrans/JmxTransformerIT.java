@@ -22,12 +22,10 @@
  */
 package com.googlecode.jmxtrans;
 
-import com.google.inject.Injector;
-import com.googlecode.jmxtrans.cli.JmxTransConfiguration;
 import com.googlecode.jmxtrans.exceptions.LifecycleException;
-import com.googlecode.jmxtrans.guice.JmxTransModule;
+import com.googlecode.jmxtrans.test.DummyApp;
 import com.googlecode.jmxtrans.test.IntegrationTest;
-import com.googlecode.jmxtrans.test.MonitorableApp;
+import com.googlecode.jmxtrans.test.ExternalApp;
 import com.googlecode.jmxtrans.test.OutputCapture;
 import com.googlecode.jmxtrans.test.RequiresIO;
 import org.junit.After;
@@ -36,7 +34,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import java.io.File;
 import java.net.URISyntaxException;
 
 import static com.jayway.awaitility.Awaitility.await;
@@ -44,32 +41,26 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 @Category({IntegrationTest.class, RequiresIO.class})
 public class JmxTransformerIT {
-	@Rule public OutputCapture output = new OutputCapture();
-	@Rule public MonitorableApp app = new MonitorableApp(12345);
-	private JmxTransformer jmxTransformer;
+	@Rule
+	public OutputCapture output = new OutputCapture();
+	@Rule
+	public ExternalApp app = new ExternalApp(DummyApp.class).enableJmx(12345);
+	private JmxTransDummyApp jmxTransDummyApp;
 
 	@Before
 	public void startJmxTrans() throws LifecycleException, URISyntaxException {
-		JmxTransConfiguration configuration = new JmxTransConfiguration();
-		configuration.setRunPeriod(1);
-		configuration.setJsonFile(file("integration-test.json"));
-		Injector injector = JmxTransModule.createInjector(configuration);
-		jmxTransformer = injector.getInstance(JmxTransformer.class);
-		jmxTransformer.start();
-	}
-
-	private File file(String filename) throws URISyntaxException {
-		return new File(getClass().getClassLoader().getResource(filename).toURI());
+		jmxTransDummyApp = new JmxTransDummyApp("integration-test.json");
+		jmxTransDummyApp.start();
 	}
 
 	@Test
 	public void metricsAreSentToStdout() throws Exception {
-		await().atMost(5, SECONDS).until(output.stdoutHasLineContaining("Value=1"));
-		await().atMost(5, SECONDS).until(output.stdoutHasLineContaining("Value=2"));
+		await().atMost(5, SECONDS).until(output.stdoutHasLineContaining("value=1"));
+		await().atMost(5, SECONDS).until(output.stdoutHasLineContaining("value=2"));
 	}
 
 	@After
 	public void stopJmxTrans() throws LifecycleException {
-		jmxTransformer.stop();
+		jmxTransDummyApp.stop();
 	}
 }

@@ -28,7 +28,7 @@
 	<parent>
 		<groupId>org.jmxtrans</groupId>
 		<artifactId>jmxtrans-output</artifactId>
-		<version>266-SNAPSHOT</version>
+		<version>270-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>jmxtrans-output-kafka</artifactId>
@@ -36,8 +36,8 @@
 	<name>JmxTrans - Kafka output writers</name>
 
 	<properties>
-		<verify.mutationThreshold>80</verify.mutationThreshold>
-		<verify.totalBranchRate>50</verify.totalBranchRate>
+		<verify.mutationThreshold>51</verify.mutationThreshold>
+		<verify.totalBranchRate>40</verify.totalBranchRate>
 		<verify.totalLineRate>90</verify.totalLineRate>
 	</properties>
 	<dependencies>
@@ -47,13 +47,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.apache.kafka</groupId>
-			<artifactId>kafka_2.10</artifactId>
-			<exclusions>
-				<exclusion>
-					<groupId>org.slf4j</groupId>
-					<artifactId>slf4j-log4j12</artifactId>
-				</exclusion>
-			</exclusions>
+			<artifactId>kafka-clients</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.jmxtrans</groupId>
@@ -68,9 +62,29 @@
 			<artifactId>slf4j-api</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>com.google.code.findbugs</groupId>
-			<artifactId>annotations</artifactId>
+			<groupId>com.github.spotbugs</groupId>
+			<artifactId>spotbugs-annotations</artifactId>
 			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.jayway.awaitility</groupId>
+			<artifactId>awaitility</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka_2.11</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.zookeeper</groupId>
+			<artifactId>zookeeper</artifactId>
+			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.assertj</groupId>
@@ -85,6 +99,11 @@
 		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency><!-- quartz depends on Log4J -->
+			<groupId>org.slf4j</groupId>
+			<artifactId>log4j-over-slf4j</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

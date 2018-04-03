@@ -29,6 +29,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.googlecode.jmxtrans.model.OutputWriterFactory;
 import com.googlecode.jmxtrans.model.ResultAttribute;
+import com.googlecode.jmxtrans.model.ResultAttributes;
 import com.googlecode.jmxtrans.model.output.support.ResultTransformerOutputWriter;
 import org.apache.commons.lang.StringUtils;
 import org.influxdb.InfluxDB;
@@ -37,11 +38,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.List;
 
 import static com.google.common.base.MoreObjects.firstNonNull;
-import static com.google.common.collect.Sets.immutableEnumSet;
+import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 
 public class InfluxDbWriterFactory implements OutputWriterFactory {
@@ -64,6 +64,8 @@ public class InfluxDbWriterFactory implements OutputWriterFactory {
 	private final ImmutableSet<ResultAttribute> resultAttributesToWriteAsTags;
 	private final boolean booleanAsNumber;
 	private final boolean createDatabase;
+	private final boolean reportJmxPortAsTag;
+	private final ImmutableList<String> typeNames;
 
 	/**
 	 * @param url      - The url e.g http://localhost:8086 to InfluxDB
@@ -83,7 +85,9 @@ public class InfluxDbWriterFactory implements OutputWriterFactory {
 			@JsonProperty("writeConsistency") String writeConsistency,
 			@JsonProperty("retentionPolicy") String retentionPolicy,
 			@JsonProperty("resultTags") List<String> resultTags,
-			@JsonProperty("createDatabase") Boolean createDatabase) {
+			@JsonProperty("createDatabase") Boolean createDatabase,
+			@JsonProperty("reportJmxPortAsTag") Boolean reportJmxPortAsTag) {
+		this.typeNames = typeNames;
 		this.booleanAsNumber = booleanAsNumber;
 		this.database = database;
 		this.createDatabase = firstNonNull(createDatabase, TRUE);
@@ -98,6 +102,8 @@ public class InfluxDbWriterFactory implements OutputWriterFactory {
 		LOG.debug("Connecting to url: {} as: username: {}", url, username);
 
 		influxDB = InfluxDBFactory.connect(url, username, password);
+
+		this.reportJmxPortAsTag = firstNonNull(reportJmxPortAsTag, FALSE);
 	}
 
 
@@ -106,16 +112,12 @@ public class InfluxDbWriterFactory implements OutputWriterFactory {
 	}
 
 	private ImmutableSet<ResultAttribute> initResultAttributesToWriteAsTags(List<String> resultTags) {
-		EnumSet<ResultAttribute> resultAttributes = EnumSet.noneOf(ResultAttribute.class);
-		if (resultTags != null) {
-			for (String resultTag : resultTags) {
-				resultAttributes.add(ResultAttribute.fromAttribute(resultTag));
-			}
+		ImmutableSet<ResultAttribute> result;
+		if (resultTags == null) {
+			result = ImmutableSet.copyOf(ResultAttributes.values());
 		} else {
-			resultAttributes = EnumSet.allOf(ResultAttribute.class);
+			result = ResultAttributes.forNames(resultTags);
 		}
-
-		ImmutableSet<ResultAttribute> result = immutableEnumSet(resultAttributes);
 		LOG.debug("Result Tags to write set to: {}", result);
 		return result;
 	}
@@ -123,6 +125,6 @@ public class InfluxDbWriterFactory implements OutputWriterFactory {
 	@Override
 	public ResultTransformerOutputWriter<InfluxDbWriter> create() {
 		return ResultTransformerOutputWriter.booleanToNumber(booleanAsNumber, new InfluxDbWriter(influxDB, database,
-				writeConsistency, retentionPolicy, tags, resultAttributesToWriteAsTags, createDatabase));
+				writeConsistency, retentionPolicy, tags, resultAttributesToWriteAsTags, typeNames, createDatabase, reportJmxPortAsTag));
 	}
 }

@@ -22,21 +22,27 @@
  */
 package com.googlecode.jmxtrans.model.output;
 
+import com.googlecode.jmxtrans.model.Query;
+import com.googlecode.jmxtrans.model.Result;
+import com.googlecode.jmxtrans.model.Server;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.MDC;
 
 import static com.googlecode.jmxtrans.model.QueryFixtures.dummyQuery;
 import static com.googlecode.jmxtrans.model.ResultFixtures.singleNumericResult;
+import static com.googlecode.jmxtrans.model.ResultFixtures.singleResult;
+import static com.googlecode.jmxtrans.model.ResultFixtures.stringResult;
 import static com.googlecode.jmxtrans.model.ServerFixtures.dummyServer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class Slf4JOutputWriterTest {
@@ -45,16 +51,20 @@ public class Slf4JOutputWriterTest {
 
 	@Mock private Logger logger;
 
+	@Mock private ResultSerializer resultSerializer;
+
 	@Before
 	public void initOutputWriter() {
-		outputWriter = new Slf4JOutputWriter(logger);
+		outputWriter = new Slf4JOutputWriter(logger, resultSerializer);
 	}
 
 	@Test
 	public void metricsAreSentToLoggerViaMDC() throws Exception {
+		when(resultSerializer.serialize(any(Server.class), any(Query.class), any(Result.class)))
+				.thenReturn("");
 		doAnswer(new Answer() {
 			@Override
-			public Object answer(InvocationOnMock invocation) throws Throwable {
+			public Object answer(InvocationOnMock invocation) {
 				assertThat(MDC.get("server")).isEqualTo("host_example_net_4321");
 				assertThat(MDC.get("metric")).isEqualTo("host_example_net_4321.MemoryAlias.ObjectPendingFinalizationCount");
 				assertThat(MDC.get("value")).isEqualTo("10");
@@ -70,6 +80,8 @@ public class Slf4JOutputWriterTest {
 
 	@Test
 	public void mdcIsCleanedAfterCall() throws Exception {
+		when(resultSerializer.serialize(any(Server.class), any(Query.class), any(Result.class)))
+				.thenReturn("");
 		outputWriter.doWrite(dummyServer(), dummyQuery(), singleNumericResult());
 
 		assertThat(MDC.get("server")).isNull();
@@ -80,4 +92,29 @@ public class Slf4JOutputWriterTest {
 		assertThat(MDC.get("epoch")).isNull();
 	}
 
+	@Test
+	public void nonNumericMetricsAreNotLoggedByDefault() throws Exception {
+		outputWriter = new Slf4JOutputWriter(logger, null);
+
+		outputWriter.doWrite(dummyServer(), dummyQuery(), singleResult(stringResult()));
+
+		verifyNoMoreInteractions(logger);
+	}
+
+	@Test
+	public void numericMetricsAreEmptyByDefault() throws Exception {
+		outputWriter = new Slf4JOutputWriter(logger, null);
+
+		outputWriter.doWrite(dummyServer(), dummyQuery(), singleNumericResult());
+
+		verify(logger).info(eq(""));
+	}
+
+	@Test
+	public void resultSerializerFiltersLogs() throws Exception {
+		when(resultSerializer.serialize(any(Server.class), any(Query.class), any(Result.class)))
+				.thenReturn(null);
+		outputWriter.doWrite(dummyServer(), dummyQuery(), singleNumericResult());
+		verifyNoMoreInteractions(logger);
+	}
 }

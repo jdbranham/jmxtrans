@@ -74,6 +74,7 @@ import static com.google.common.collect.ImmutableSet.copyOf;
 import static javax.management.remote.JMXConnectorFactory.PROTOCOL_PROVIDER_PACKAGES;
 import static javax.naming.Context.SECURITY_CREDENTIALS;
 import static javax.naming.Context.SECURITY_PRINCIPAL;
+import static javax.management.remote.rmi.RMIConnectorServer.RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE;
 
 /**
  * Represents a jmx server that we want to connect to. This also stores the
@@ -103,8 +104,12 @@ public class Server implements JmxConnectionProvider {
 	private static final String CONNECTOR_ADDRESS = "com.sun.management.jmxremote.localConnectorAddress";
 	private static final String FRONT = "service:jmx:rmi:///jndi/rmi://";
 	private static final String BACK = "/jmxrmi";
+	private static final int DEFAULT_SOCKET_SO_TIMEOUT_MILLIS = 10000;
 
 	private static final Logger logger = LoggerFactory.getLogger(Server.class);
+
+	/** Returns id for internal logic */
+	@Getter private final String id;
 
 	/**
 	 * Some writers (GraphiteWriter) use the alias in generation of the unique
@@ -149,6 +154,11 @@ public class Server implements JmxConnectionProvider {
 	 */
 	@Getter private final boolean local;
 
+	/**
+	 * Whether the remote JMX server should be requested through SSL connection
+	 */
+	@Getter private final boolean ssl;
+
 	@Getter private final ImmutableSet<Query> queries;
 
 	@Nonnull @Getter private final Iterable<OutputWriter> outputWriters;
@@ -170,12 +180,13 @@ public class Server implements JmxConnectionProvider {
 			@JsonProperty("runPeriodSeconds") Integer runPeriodSeconds,
 			@JsonProperty("numQueryThreads") Integer numQueryThreads,
 			@JsonProperty("local") boolean local,
+			@JsonProperty("ssl") boolean ssl,
 			@JsonProperty("queries") List<Query> queries,
 			@JsonProperty("outputWriters") List<OutputWriterFactory> outputWriters,
 			@JacksonInject @Named("mbeanPool") KeyedObjectPool<JmxConnectionProvider, JMXConnection> pool) {
 
 		this(alias, pid, host, port, username, password, protocolProviderPackages, url, cronExpression,
-				runPeriodSeconds, numQueryThreads, local, queries, outputWriters, ImmutableList.<OutputWriter>of(),
+				runPeriodSeconds, numQueryThreads, local, ssl, queries, outputWriters, ImmutableList.<OutputWriter>of(),
 				pool);
 	}
 
@@ -192,12 +203,13 @@ public class Server implements JmxConnectionProvider {
 			Integer runPeriodSeconds,
 			Integer numQueryThreads,
 			boolean local,
+			boolean ssl,
 			List<Query> queries,
 			ImmutableList<OutputWriter> outputWriters,
 			KeyedObjectPool<JmxConnectionProvider, JMXConnection> pool) {
 
 		this(alias, pid, host, port, username, password, protocolProviderPackages, url, cronExpression,
-				runPeriodSeconds, numQueryThreads, local, queries, ImmutableList.<OutputWriterFactory>of(),
+				runPeriodSeconds, numQueryThreads, local, ssl, queries, ImmutableList.<OutputWriterFactory>of(),
 				outputWriters, pool);
 	}
 
@@ -214,6 +226,7 @@ public class Server implements JmxConnectionProvider {
 			Integer runPeriodSeconds,
 			Integer numQueryThreads,
 			boolean local,
+			boolean ssl,
 			List<Query> queries,
 			List<OutputWriterFactory> outputWriterFactories,
 			List<OutputWriter> outputWriters,
@@ -239,6 +252,7 @@ public class Server implements JmxConnectionProvider {
 		this.runPeriodSeconds = runPeriodSeconds;
 		this.numQueryThreads = firstNonNull(numQueryThreads, 0);
 		this.local = local;
+		this.ssl = ssl;
 		this.queries = copyOf(queries);
 
 		// when connecting in local, we cache the host after retrieving it from the network card
@@ -256,29 +270,32 @@ public class Server implements JmxConnectionProvider {
 		this.pool = checkNotNull(pool);
 		this.outputWriterFactories = ImmutableList.copyOf(firstNonNull(outputWriterFactories, ImmutableList.<OutputWriterFactory>of()));
 		this.outputWriters = ImmutableList.copyOf(firstNonNull(outputWriters, ImmutableList.<OutputWriter>of()));
+		this.id = String.format("%s_%s_%s", host, port, pid);
 	}
 
 	public Iterable<Result> execute(Query query) throws Exception {
-		JMXConnection jmxConnection = pool.borrowObject(this);
+		JMXConnection jmxConnection = null;
 		try {
+			jmxConnection = pool.borrowObject(this);
 			ImmutableList.Builder<Result> results = ImmutableList.builder();
 			MBeanServerConnection connection = jmxConnection.getMBeanServerConnection();
 
 			for (ObjectName queryName : query.queryNames(connection)) {
 				results.addAll(query.fetchResults(connection, queryName));
 			}
-			pool.returnObject(this, jmxConnection);
+
 			return results.build();
 		} catch (Exception e) {
-			// since we will invalidate the connection in the pool, prevent connection leaks
-			try {
-				jmxConnection.close();
-			} catch (IOException | RuntimeException re) {
-				// drop these, we don't really know what caused the original exception.
-				logger.warn("An error occurred trying to close a JMX Connection during error handling.", re);
+			if (jmxConnection != null) {
+				pool.invalidateObject(this, jmxConnection);
+				jmxConnection = null;
 			}
-			pool.invalidateObject(this, jmxConnection);
 			throw e;
+		}
+		finally {
+			if (jmxConnection != null) {
+				pool.returnObject(this, jmxConnection);
+			}
 		}
 	}
 
@@ -297,7 +314,7 @@ public class Server implements JmxConnectionProvider {
 			return environment.build();
 		}
 
-		ImmutableMap.Builder<String, String[]> environment = ImmutableMap.builder();
+		ImmutableMap.Builder<String, Object> environment = ImmutableMap.builder();
 		if ((username != null) && (password != null)) {
 			String[] credentials = new String[] {
 					username,
@@ -305,6 +322,16 @@ public class Server implements JmxConnectionProvider {
 			};
 			environment.put(JMXConnector.CREDENTIALS, credentials);
 		}
+
+		JmxTransRMIClientSocketFactory rmiClientSocketFactory = new JmxTransRMIClientSocketFactory(DEFAULT_SOCKET_SO_TIMEOUT_MILLIS, ssl);
+		// The following is required when JMX is secured with SSL
+		// with com.sun.management.jmxremote.ssl=true
+		// as shown in http://docs.oracle.com/javase/8/docs/technotes/guides/management/agent.html#gdfvq
+		environment.put(RMI_CLIENT_SOCKET_FACTORY_ATTRIBUTE, rmiClientSocketFactory);
+		// The following is required when JNDI Registry is secured with SSL
+		// with com.sun.management.jmxremote.registry.ssl=true
+		// This property is defined in com.sun.jndi.rmi.registry.RegistryContext.SOCKET_FACTORY
+		environment.put("com.sun.jndi.rmi.factory.socket", rmiClientSocketFactory);
 
 		return environment.build();
 	}
@@ -316,7 +343,7 @@ public class Server implements JmxConnectionProvider {
 	@Override
 	@JsonIgnore
 	public JMXConnector getServerConnection() throws IOException {
-		JMXServiceURL url = new JMXServiceURL(getUrl());
+		JMXServiceURL url = getJmxServiceURL();
 		return JMXConnectorFactory.connect(url, this.getEnvironment());
 	}
 
@@ -469,6 +496,7 @@ public class Server implements JmxConnectionProvider {
 		@Setter private Integer runPeriodSeconds;
 		@Setter private Integer numQueryThreads;
 		@Setter private boolean local;
+		@Setter private boolean ssl;
 		private final List<OutputWriterFactory> outputWriterFactories = new ArrayList<>();
 		private final List<OutputWriter> outputWriters = new ArrayList<>();
 		private final List<Query> queries = new ArrayList<>();
@@ -489,6 +517,7 @@ public class Server implements JmxConnectionProvider {
 			this.runPeriodSeconds = server.runPeriodSeconds;
 			this.numQueryThreads = server.numQueryThreads;
 			this.local = server.local;
+			this.ssl = server.ssl;
 			this.queries.addAll(server.queries);
 			this.pool = server.pool;
 		}
@@ -533,6 +562,7 @@ public class Server implements JmxConnectionProvider {
 						runPeriodSeconds,
 						numQueryThreads,
 						local,
+						ssl,
 						queries,
 						outputWriterFactories,
 						pool);
@@ -550,6 +580,7 @@ public class Server implements JmxConnectionProvider {
 					runPeriodSeconds,
 					numQueryThreads,
 					local,
+					ssl,
 					queries,
 					ImmutableList.copyOf(outputWriters),
 					pool);

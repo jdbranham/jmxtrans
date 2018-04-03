@@ -25,16 +25,20 @@ package com.googlecode.jmxtrans.model.output;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
+import com.google.common.collect.ImmutableList;
 import com.googlecode.jmxtrans.model.OutputWriterAdapter;
 import com.googlecode.jmxtrans.model.Query;
 import com.googlecode.jmxtrans.model.Result;
 import com.googlecode.jmxtrans.model.ResultAttribute;
 import com.googlecode.jmxtrans.model.Server;
+import com.googlecode.jmxtrans.model.naming.KeyUtils;
 import org.influxdb.InfluxDB;
 import org.influxdb.InfluxDB.ConsistencyLevel;
 import org.influxdb.dto.BatchPoints;
 import org.influxdb.dto.Point;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
@@ -43,6 +47,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import static com.google.common.collect.Maps.newHashMap;
+import static com.googlecode.jmxtrans.util.NumberUtils.isValidNumber;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 /**
@@ -54,14 +59,17 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
  */
 @ThreadSafe
 public class InfluxDbWriter extends OutputWriterAdapter {
+	private static final Logger log = LoggerFactory.getLogger(InfluxDbWriter.class);
 
 	public static final String TAG_HOSTNAME = "hostname";
+	public static final String JMX_PORT_KEY = "_jmx_port";
 
 	@Nonnull private final InfluxDB influxDB;
 	@Nonnull private final String database;
 	@Nonnull private final ConsistencyLevel writeConsistency;
 	@Nonnull private final String retentionPolicy;
 	@Nonnull private final ImmutableMap<String,String> tags;
+	@Nonnull ImmutableList<String> typeNames;
 
 	/**
 	 * The {@link ImmutableSet} of {@link ResultAttribute} attributes of
@@ -70,6 +78,7 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 	private final ImmutableSet<ResultAttribute> resultAttributesToWriteAsTags;
 
 	private final boolean createDatabase;
+	private final boolean reportJmxPortAsTag;
 
 	private final Predicate<Object> isNotNaN = new Predicate<Object>() {
 		@Override
@@ -85,7 +94,10 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 			@Nonnull String retentionPolicy,
 			@Nonnull ImmutableMap<String,String> tags,
 			@Nonnull ImmutableSet<ResultAttribute> resultAttributesToWriteAsTags,
-			boolean createDatabase) {
+			@Nonnull ImmutableList<String> typeNames,
+			boolean createDatabase,
+			boolean reportJmxPortAsTag) {
+		this.typeNames = typeNames;
 		this.database = database;
 		this.writeConsistency = writeConsistency;
 		this.retentionPolicy = retentionPolicy;
@@ -93,6 +105,7 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 		this.tags = tags;
 		this.resultAttributesToWriteAsTags = resultAttributesToWriteAsTags;
 		this.createDatabase = createDatabase;
+		this.reportJmxPortAsTag = reportJmxPortAsTag;
 	}
 
 	/**
@@ -143,6 +156,9 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 	 * <p>
 	 * {@link Server#getHost()} is set as a tag on every {@link Point}
 	 * </p>
+	 * <p>
+	 * {@link Server#getPort()} is written as a field, unless {@link #reportJmxPortAsTag} is set to {@code true}
+	 * </p>
 	 *
 	 */
 	@Override
@@ -155,20 +171,32 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 		for(Map.Entry<String,String> tag : tags.entrySet()) {
 			batchPointsBuilder.tag(tag.getKey(),tag.getValue());
 		}
+
 		BatchPoints batchPoints = batchPointsBuilder.consistency(writeConsistency).build();
 		for (Result result : results) {
+			log.debug("Query result: {}", result);
 
-			HashMap<String, Object> filteredValues = newHashMap(Maps.filterValues(result.getValues(), isNotNaN));
+			HashMap<String, Object> filteredValues = newHashMap();
+			Object value = result.getValue();
+			if (isValidNumber(value)) {
+				String key = KeyUtils.getPrefixedKeyString(query, result, typeNames);
+				filteredValues.put(key, value);
+			}
 
 			// send the point if filteredValues isn't empty
 			if (!filteredValues.isEmpty()) {
-				filteredValues.put("_jmx_port", Integer.parseInt(server.getPort()));
 				Map<String, String> resultTagsToApply = buildResultTagMap(result);
+				if (reportJmxPortAsTag) {
+					resultTagsToApply.put(JMX_PORT_KEY, server.getPort());
+				} else {
+					filteredValues.put(JMX_PORT_KEY, Integer.parseInt(server.getPort()));
+				}
 				Point point = Point.measurement(result.getKeyAlias()).time(result.getEpoch(), MILLISECONDS)
 						.tag(resultTagsToApply).fields(filteredValues).build();
+
+				log.debug("Point: {}", point);
 				batchPoints.point(point);
 			}
-
 		}
 
 		influxDB.write(batchPoints);
@@ -178,7 +206,7 @@ public class InfluxDbWriter extends OutputWriterAdapter {
 
 		Map<String, String> resultTagMap = new TreeMap<>();
 		for (ResultAttribute resultAttribute : resultAttributesToWriteAsTags) {
-			resultAttribute.addAttribute(resultTagMap, result);
+			resultAttribute.addTo(resultTagMap, result);
 		}
 
 		return resultTagMap;

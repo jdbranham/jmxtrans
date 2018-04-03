@@ -28,7 +28,7 @@
 	<parent>
 		<groupId>org.jmxtrans</groupId>
 		<artifactId>jmxtrans-output</artifactId>
-		<version>266-SNAPSHOT</version>
+		<version>270-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>jmxtrans-output-cloudwatch</artifactId>
@@ -38,8 +38,8 @@
 	<description>This module contains output writers based on CloudWatch (AWS).</description>
 
 	<properties>
-		<verify.mutationThreshold>48</verify.mutationThreshold>
-		<verify.totalBranchRate>68</verify.totalBranchRate>
+		<verify.mutationThreshold>45</verify.mutationThreshold>
+		<verify.totalBranchRate>66</verify.totalBranchRate>
 		<verify.totalLineRate>63</verify.totalLineRate>
 	</properties>
 
@@ -69,8 +69,8 @@
 			<artifactId>slf4j-api</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>com.google.code.findbugs</groupId>
-			<artifactId>annotations</artifactId>
+			<groupId>com.github.spotbugs</groupId>
+			<artifactId>spotbugs-annotations</artifactId>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
@@ -103,7 +103,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.powermock</groupId>
-			<artifactId>powermock-api-mockito</artifactId>
+			<artifactId>powermock-api-mockito2</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>

@@ -24,6 +24,7 @@ package com.googlecode.jmxtrans.jmx;
 
 import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
+import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.googlecode.jmxtrans.model.JmxResultProcessor;
@@ -40,10 +41,19 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
+
+import javax.management.openmbean.CompositeData;
+import javax.management.openmbean.CompositeDataSupport;
+import javax.management.openmbean.CompositeType;
+import javax.management.openmbean.OpenType;
+import javax.management.openmbean.SimpleType;
+import javax.management.openmbean.OpenDataException;
+
 import java.lang.management.ManagementFactory;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 import static com.google.common.collect.FluentIterable.from;
 import static com.googlecode.jmxtrans.model.QueryFixtures.dummyQueryWithResultAlias;
@@ -80,7 +90,7 @@ public class JmxResultProcessorTest {
 		assertThat(integerResult.getClassName()).isEqualTo("sun.management.RuntimeImpl");
 		assertThat(integerResult.getKeyAlias()).isEqualTo("resultAlias");
 		assertThat(integerResult.getTypeName()).isEqualTo("type=Runtime");
-		assertThat(integerResult.getValues()).hasSize(1);
+		assertThat(integerResult.getValue()).isEqualTo(51L);
 	}
 
 	@Test
@@ -101,6 +111,18 @@ public class JmxResultProcessorTest {
 	}
 
 	@Test
+	public void testNullValueInCompositeData() throws MalformedObjectNameException, OpenDataException, InstanceNotFoundException {
+		ObjectInstance runtime = getRuntime();
+		List<Result> results = new JmxResultProcessor(
+				dummyQueryWithResultAlias(),
+				runtime,
+				ImmutableList.of(new Attribute("SomeAttribute", getCompositeData())),
+				runtime.getClassName(),
+				TEST_DOMAIN_NAME).getResults();
+		assertThat(results).hasSize(0);
+	}
+
+	@Test
 	public void canReadSingleIntegerValue() throws MalformedObjectNameException, InstanceNotFoundException {
 		Attribute integerAttribute = new Attribute("CollectionCount", 51L);
 		ObjectInstance runtime = getRuntime();
@@ -115,13 +137,8 @@ public class JmxResultProcessorTest {
 		Result integerResult = results.get(0);
 
 		assertThat(integerResult.getAttributeName()).isEqualTo("CollectionCount");
-		assertThat(integerResult.getValues()).hasSize(1);
-
-		Object objectValue = integerResult.getValues().get("CollectionCount");
-		assertThat(objectValue).isInstanceOf(Long.class);
-
-		Long integerValue = (Long) objectValue;
-		assertThat(integerValue).isEqualTo(51L);
+		assertThat(integerResult.getValue()).isInstanceOf(Long.class);
+		assertThat(integerResult.getValue()).isEqualTo(51L);
 	}
 
 	@Test
@@ -139,13 +156,14 @@ public class JmxResultProcessorTest {
 		Result result = results.get(0);
 
 		assertThat(result.getAttributeName()).isEqualTo("BootClassPathSupported");
-		assertThat(result.getValues()).hasSize(1);
+		assertThat(result.getValue()).isInstanceOf(Boolean.class);
+		assertThat(result.getValue()).isEqualTo(TRUE);
+	}
 
-		Object objectValue = result.getValues().get("BootClassPathSupported");
-		assertThat(objectValue).isInstanceOf(Boolean.class);
-
-		Boolean booleanValue = (Boolean) objectValue;
-		assertThat(booleanValue).isEqualTo(TRUE);
+	private Optional<Result> firstMatch(List<Result> results, String attributeName, String  ... valuePath) {
+		return from(results).firstMatch(Predicates.and(
+				new ByAttributeName(attributeName),
+				new ByValuePath(valuePath)));
 	}
 
 	@Test
@@ -163,19 +181,13 @@ public class JmxResultProcessorTest {
 
 		assertThat(results.size()).isGreaterThan(2);
 
-		Optional<Result> result = from(results).firstMatch(new ByAttributeName("SystemProperties.java.version"));
+		Optional<Result> result = firstMatch(results, "SystemProperties", "java.version", "value");
 
 		assertThat(result.isPresent()).isTrue();
 
-		assertThat(result.get().getAttributeName()).isEqualTo("SystemProperties.java.version");
-		Map<String,Object> values = result.get().getValues();
-		assertThat(values).hasSize(2);
-
-		Object objectValue = result.get().getValues().get("key");
-		assertThat(objectValue).isInstanceOf(String.class);
-
-		String key = (String) objectValue;
-		assertThat(key).isEqualTo("java.version");
+		assertThat(result.get().getAttributeName()).isEqualTo("SystemProperties");
+		assertThat(result.get().getValuePath()).isEqualTo(ImmutableList.of("java.version", "value"));
+		assertThat(result.get().getValue()).isEqualTo(System.getProperty("java.version"));
 	}
 
 	@Test(timeout = 1000)
@@ -211,14 +223,11 @@ public class JmxResultProcessorTest {
 
 		assertThat(results.size()).isGreaterThan(2);
 
-		Optional<Result> result = from(results).firstMatch(new ByAttributeName("LastGcInfo"));
-		assertThat(result.isPresent()).isTrue();
 		// Should have primitive typed fields
-		assertThat(result.get().getValues().size()).isGreaterThan(0);
-		assertThat(result.get().getValues().get("duration")).isNotNull();
+		assertThat(firstMatch(results, "LastGcInfo", "duration").get()).isNotNull();
 		// assert tabular fields are excluded
-		assertThat(result.get().getValues().get("memoryUsageBeforeGc")).isNull();
-		assertThat(result.get().getValues().get("memoryUsageAfterGc")).isNull();
+		assertThat(firstMatch(results, "LastGcInfo", "memoryUsageBeforeGc").get()).isNull();
+		assertThat(firstMatch(results, "LastGcInfo", "memoryUsageAfterGc").get()).isNull();
 	}
 
 	@Test
@@ -234,17 +243,16 @@ public class JmxResultProcessorTest {
 				memory.getClassName(),
 				TEST_DOMAIN_NAME).getResults();
 
-		assertThat(results).hasSize(1);
+		assertThat(results).hasSize(4);
 
-		Result result = results.get(0);
+		for(Result result: results) {
+			assertThat(result.getAttributeName()).isEqualTo("HeapMemoryUsage");
+			assertThat(result.getTypeName()).isEqualTo("type=Memory");
+		}
 
-		assertThat(result.getAttributeName()).isEqualTo("HeapMemoryUsage");
-		assertThat(result.getTypeName()).isEqualTo("type=Memory");
-
-		Map<String,Object> values = result.getValues();
-		assertThat(values).hasSize(4);
-
-		Object objectValue = result.getValues().get("init");
+		Optional<Result> optionalResult = firstMatch(results, "HeapMemoryUsage", "init");
+		assertThat(optionalResult.isPresent()).isTrue();
+		Object objectValue = optionalResult.get().getValue();
 		assertThat(objectValue).isInstanceOf(Long.class);
 	}
 
@@ -261,10 +269,14 @@ public class JmxResultProcessorTest {
 		).getResults();
 
 		assertThat(results).isNotNull();
-		assertThat(results).hasSize(1);
-		Result result = results.get(0);
-		assertThat(result.getValues()).hasSize(2);
-		assertThat(result.getValues()).isEqualTo(ImmutableMap.of("key1", "value1", "key2", "value2"));
+		assertThat(results).hasSize(2);
+		for(Result result: results) {
+			assertThat(result.getAttributeName()).isEqualTo("map");
+			assertThat(result.getTypeName()).isEqualTo("type=Memory");
+		}
+
+		assertThat(firstMatch(results, "map", "key1").get().getValue()).isEqualTo("value1");
+		assertThat(firstMatch(results, "map", "key2").get().getValue()).isEqualTo("value2");
 	}
 
 	@Test
@@ -280,10 +292,13 @@ public class JmxResultProcessorTest {
 		).getResults();
 
 		assertThat(results).isNotNull();
-		assertThat(results).hasSize(1);
-		Result result = results.get(0);
-		assertThat(result.getValues()).hasSize(2);
-		assertThat(result.getValues()).isEqualTo(ImmutableMap.of("1", "value1", "2", "value2"));
+		for(Result result: results) {
+			assertThat(result.getAttributeName()).isEqualTo("map");
+			assertThat(result.getTypeName()).isEqualTo("type=Memory");
+		}
+
+		assertThat(firstMatch(results, "map", "1").get().getValue()).isEqualTo("value1");
+		assertThat(firstMatch(results, "map", "2").get().getValue()).isEqualTo("value2");
 	}
 
 	public ObjectInstance getRuntime() throws MalformedObjectNameException, InstanceNotFoundException {
@@ -304,6 +319,15 @@ public class JmxResultProcessorTest {
 				new ObjectName("java.lang", keyProperties));
 	}
 
+	private CompositeData getCompositeData() throws OpenDataException {
+		String[] keys = new String[]{"p1"};
+		OpenType[] itemTypes = new OpenType[]{SimpleType.STRING};
+		CompositeType compType = new CompositeType("compType", "descr", keys, keys, itemTypes);
+		Map<String, Object> values = new HashMap();
+		values.put("p1", null);
+		return new CompositeDataSupport(compType, values);
+	}
+
 	private static class ByAttributeName implements Predicate<Result> {
 		private final String attributeName;
 
@@ -317,6 +341,21 @@ public class JmxResultProcessorTest {
 				return false;
 			}
 			return attributeName.equals(result.getAttributeName());
+		}
+	}
+	private static class ByValuePath implements Predicate<Result> {
+		private final ImmutableList<String> valuePath;
+
+		public ByValuePath(String ... valuePath) {
+			this.valuePath = ImmutableList.copyOf(valuePath);
+		}
+
+		@Override
+		public boolean apply(@Nullable Result result) {
+			if (result == null) {
+				return false;
+			}
+			return valuePath.equals(result.getValuePath());
 		}
 	}
 }

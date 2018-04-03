@@ -23,19 +23,24 @@
 package com.googlecode.jmxtrans;
 
 import com.googlecode.jmxtrans.cli.JmxTransConfiguration;
+import com.googlecode.jmxtrans.executors.ExecutorRepository;
 import org.junit.Test;
 
+import java.io.File;
+import java.net.URISyntaxException;
 import java.util.Date;
+import java.util.List;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 public class JmxTransformerTest {
 
 	@Test
 	public void startDateIsSpreadAccordingToRunPeriod() {
-		JmxTransformer jmxTransformer = new JmxTransformer(null, new JmxTransConfiguration(), null, null, null, null);
+		JmxTransformer jmxTransformer = new JmxTransformer(null, new JmxTransConfiguration(), null, null, mock(ExecutorRepository.class), mock(ExecutorRepository.class));
 
 		Date now = new Date();
 
@@ -43,4 +48,14 @@ public class JmxTransformerTest {
 				.isBetween(now, new Date(now.getTime() + MILLISECONDS.convert(60, SECONDS)));
 	}
 
+	@Test
+	public void findProcessConfigFiles() throws URISyntaxException {
+		JmxTransConfiguration configuration = new JmxTransConfiguration();
+		configuration.setProcessConfigDir(new File(ConfigurationParserTest.class.getResource("/example.json").toURI()).getParentFile());
+		JmxTransformer jmxTransformer = new JmxTransformer(null, configuration, null, null, mock(ExecutorRepository.class), mock(ExecutorRepository.class));
+
+		List<File> processConfigFiles = jmxTransformer.getProcessConfigFiles();
+
+		assertThat(processConfigFiles).hasSize(7);
+	}
 }
